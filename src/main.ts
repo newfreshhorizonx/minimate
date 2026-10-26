@@ -69,8 +69,28 @@ function markSolved(chapter: Chapter, index: number) {
 
 const solvedIn = (chapter: Chapter) => new Set(loadProgress()[chapter.id] ?? []);
 
+// Testing switch on the home screen: every level playable without solving the ones before.
+const UNLOCK_ALL_KEY = 'minimate.unlockAll';
+
+function unlockAll(): boolean {
+  try {
+    return localStorage.getItem(UNLOCK_ALL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setUnlockAll(on: boolean) {
+  try {
+    if (on) localStorage.setItem(UNLOCK_ALL_KEY, '1');
+    else localStorage.removeItem(UNLOCK_ALL_KEY);
+  } catch {
+    // Private mode: the switch just doesn't stick.
+  }
+}
+
 function isUnlocked(solved: Set<number>, index: number): boolean {
-  return index <= Math.max(-1, ...solved) + UNLOCK_AHEAD;
+  return unlockAll() || index <= Math.max(-1, ...solved) + UNLOCK_AHEAD;
 }
 
 function startLevel(chapter: Chapter, index: number) {
@@ -391,7 +411,14 @@ function renderHome() {
           <span class="card-count ${done === total ? 'done' : ''}">${done} / ${total}</span>
           <span class="progress"><span style="width: ${total ? (100 * done) / total : 0}%"></span></span>
         </button>`;
-      }).join('')}`).join('')}`;
+      }).join('')}`).join('')}
+    <label class="switch">
+      <input type="checkbox" id="unlock-all" ${unlockAll() ? 'checked' : ''} />
+      <span>Unlock all levels (for testing)</span>
+    </label>`;
+  app.querySelector<HTMLInputElement>('#unlock-all')!.addEventListener('change', (e) => {
+    setUnlockAll((e.target as HTMLInputElement).checked);
+  });
   app.querySelectorAll<HTMLButtonElement>('.level-card').forEach((btn) => {
     btn.addEventListener('click', () => {
       openChapter = CHAPTERS.find((c) => c.id === btn.dataset.id)!;
