@@ -7,11 +7,14 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate": "vite-node scripts/generate-levels.ts"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "typescript": "^5.9.3",
     "vite": "^6.4.5",
+    "vite-node": "^3.2.4",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^3.2.7"
   }

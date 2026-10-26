@@ -1,31 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { createPosition, parseSquare, status } from '../src/engine/board';
-import { forces, shortestPath, solutions } from '../src/engine/solver';
-import { LEVELS } from '../src/levels';
+import { clearCache, forces, shortestPath, solutions } from '../src/engine/solver';
+import { CHAPTERS } from '../src/levels';
 
-describe.each(LEVELS)('level $id', (level) => {
-  const pos = createPosition(level.width, level.height, level.pieces);
-
-  it('starts in a playable position', () => {
-    expect(status(pos)).toBe('ongoing');
+describe.each(CHAPTERS)('chapter $id', (chapter) => {
+  it('has levels', () => {
+    expect(chapter.levels.length).toBeGreaterThan(0);
   });
 
-  if (level.goal.kind === 'path') {
-    const goal = level.goal;
-    it(`shortest path is exactly ${goal.moves} moves`, () => {
-      expect(shortestPath(pos, parseSquare(pos, goal.from), parseSquare(pos, goal.target))).toBe(goal.moves);
-    });
-  } else {
-    const { kind, moves } = level.goal;
-    it(`has exactly one first move that wins (${kind}) in ${moves}`, () => {
-      expect(solutions(pos, moves, kind)).toHaveLength(1);
-    });
-    it('has no faster win', () => {
-      expect(forces(pos, moves - 1, kind)).toBe(false);
-    });
-  }
-});
+  it.each(chapter.levels.map((level, i) => ({ level, n: i + 1 })))('level $n is valid', ({ level }) => {
+    clearCache();
+    const pos = createPosition(level.width, level.height, level.pieces);
+    expect(status(pos)).toBe('ongoing');
 
-it('level ids are unique', () => {
-  expect(new Set(LEVELS.map((l) => l.id)).size).toBe(LEVELS.length);
+    const goal = level.goal;
+    if (goal.kind === 'path') {
+      expect(shortestPath(pos, parseSquare(pos, goal.from), parseSquare(pos, goal.target))).toBe(goal.moves);
+    } else {
+      expect(solutions(pos, goal.moves, goal.kind)).toHaveLength(1); // exactly one winning first move
+      expect(forces(pos, goal.moves - 1, goal.kind)).toBe(false); // and no faster win
+    }
+  });
 });

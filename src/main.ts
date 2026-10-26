@@ -3,17 +3,21 @@ import {
   type Move, type Position, createPosition, legalMoves, makeMove, moveName, parseSquare,
   squareName, status,
 } from './engine/board';
-import { bestDefence, moveWins, pathMoves } from './engine/solver';
-import { LEVELS, type Level } from './levels';
+import { bestDefence, clearCache, moveWins, pathMoves } from './engine/solver';
+import { CHAPTERS, type Chapter, type Level, goalText } from './levels';
 
 // Same glyph for both colours (styled via CSS); ︎ stops iOS drawing emoji.
 const GLYPHS: Record<string, string> = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
-const STORAGE_KEY = 'minimate.solved';
+const PIECE_NAMES: Record<string, string> = { K: 'king', N: 'knight' };
+const STORAGE_KEY = 'minimate.progress';
 const DRAG_THRESHOLD = 6; // px the pointer must travel before a press becomes a drag
+const UNLOCK_AHEAD = 3; // levels playable beyond the furthest solved one
 
 const app = document.querySelector<HTMLElement>('#app')!;
 
 interface Game {
+  chapter: Chapter;
+  index: number;
   level: Level;
   pos: Position;
   pathSquare: number; // path levels: where the moving piece is now
@@ -35,30 +39,48 @@ interface Drag {
 }
 
 let game: Game | null = null;
+let openChapter: Chapter | null = null; // the level grid being shown when no game runs
 let drag: Drag | null = null;
 
-function loadSolved(): Set<string> {
+// --- Progress: solved level numbers per chapter ----------------------------
+
+type Progress = Record<string, number[]>;
+
+function loadProgress(): Progress {
   try {
-    return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]'));
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
   } catch {
-    return new Set();
+    return {};
   }
 }
 
-function markSolved(id: string) {
-  const solved = loadSolved();
-  solved.add(id);
+function markSolved(chapter: Chapter, index: number) {
+  const progress = loadProgress();
+  const solved = new Set(progress[chapter.id] ?? []);
+  solved.add(index);
+  progress[chapter.id] = [...solved];
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...solved]));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
   } catch {
     // Private mode: progress just isn't saved.
   }
 }
 
-function startLevel(level: Level) {
+const solvedIn = (chapter: Chapter) => new Set(loadProgress()[chapter.id] ?? []);
+
+function isUnlocked(solved: Set<number>, index: number): boolean {
+  return index <= Math.max(-1, ...solved) + UNLOCK_AHEAD;
+}
+
+function startLevel(chapter: Chapter, index: number) {
+  const level = chapter.levels[index];
   const pos = createPosition(level.width, level.height, level.pieces);
   const pathSquare = level.goal.kind === 'path' ? parseSquare(pos, level.goal.from) : -1;
+  clearCache(); // keeps memory small; results from another level are useless here
+  openChapter = chapter;
   game = {
+    chapter,
+    index,
     level,
     pos,
     pathSquare,
@@ -92,7 +114,7 @@ function finish(g: Game, won: boolean, message: string) {
   g.selected = null;
   g.tone = won ? 'good' : 'bad';
   g.message = message;
-  if (won) markSolved(g.level.id);
+  if (won) markSolved(g.chapter, g.index);
 }
 
 function playPath(g: Game, move: Move) {
@@ -165,8 +187,9 @@ function tapSquare(g: Game, square: number) {
   if (g.over || g.busy) return;
   if (tryMove(g, square)) return render();
   if (g.level.goal.kind === 'path' && g.selected !== null) {
+    const piece = PIECE_NAMES[g.pos.squares[g.selected]!.type] ?? 'piece';
     g.tone = 'bad';
-    g.message = 'Not there – the knight can’t reach that square, or a black piece guards it.';
+    g.message = `Not there – the ${piece} can’t reach that square, or a black piece guards it.`;
   } else {
     g.selected = null;
   }
@@ -292,48 +315,84 @@ function renderBoard(g: Game): HTMLElement {
 }
 
 function renderLevel(g: Game) {
-  const index = LEVELS.indexOf(g.level);
-  const next = LEVELS[index + 1];
+  const { chapter, index } = g;
+  const hasNext = index + 1 < chapter.levels.length;
+  const won = g.over && g.tone === 'good';
   app.innerHTML = `
     <div class="top-bar">
-      <button class="text-btn" id="back">‹ Levels</button>
-      <span class="world">${index + 1} / ${LEVELS.length}</span>
+      <button class="text-btn" id="back">‹ ${chapter.title}</button>
+      <span class="world">Level ${index + 1} / ${chapter.levels.length}</span>
     </div>
-    <p class="world">${g.level.world}</p>
-    <h1>${g.level.title}</h1>
-    <p class="hint">${g.level.hint}</p>
+    <h1>${goalText(g.level.goal)}</h1>
+    <p class="hint">${chapter.intro}</p>
     <div id="board"></div>
     <p class="status ${g.tone}">${g.message}</p>
     <div class="actions">
       <button class="secondary" id="retry">Retry</button>
-      ${g.over && g.tone === 'good' && next ? '<button class="primary" id="next">Next level</button>' : ''}
+      ${won ? `<button class="primary" id="next">${hasNext ? 'Next level' : 'Chapter done!'}</button>` : ''}
     </div>`;
   app.querySelector('#board')!.replaceWith(renderBoard(g));
   app.querySelector('#back')!.addEventListener('click', () => { game = null; render(); });
-  app.querySelector('#retry')!.addEventListener('click', () => startLevel(g.level));
-  app.querySelector('#next')?.addEventListener('click', () => startLevel(next));
+  app.querySelector('#retry')!.addEventListener('click', () => startLevel(chapter, index));
+  app.querySelector('#next')?.addEventListener('click', () => {
+    if (hasNext) return startLevel(chapter, index + 1);
+    game = null;
+    openChapter = null;
+    render();
+  });
+}
+
+function renderChapter(chapter: Chapter) {
+  const solved = solvedIn(chapter);
+  app.innerHTML = `
+    <div class="top-bar">
+      <button class="text-btn" id="back">‹ Chapters</button>
+      <span class="world">${solved.size} / ${chapter.levels.length}</span>
+    </div>
+    <p class="world">${chapter.world}</p>
+    <h1>${chapter.title}</h1>
+    <p class="hint">${chapter.intro}</p>
+    <div class="level-grid">
+      ${chapter.levels.map((_, i) => {
+        const state = solved.has(i) ? 'solved' : isUnlocked(solved, i) ? 'open' : 'locked';
+        return `<button class="level-tile ${state}" data-index="${i}" ${state === 'locked' ? 'disabled' : ''}
+          aria-label="Level ${i + 1}${state === 'solved' ? ', solved' : ''}">${i + 1}</button>`;
+      }).join('')}
+    </div>`;
+  app.querySelector('#back')!.addEventListener('click', () => { openChapter = null; render(); });
+  app.querySelectorAll<HTMLButtonElement>('.level-tile:not([disabled])').forEach((btn) => {
+    btn.addEventListener('click', () => startLevel(chapter, Number(btn.dataset.index)));
+  });
 }
 
 function renderHome() {
-  const solved = loadSolved();
-  const worlds = [...new Set(LEVELS.map((l) => l.world))];
+  const worlds = [...new Set(CHAPTERS.map((c) => c.world))];
   app.innerHTML = `
     <h1>Minimate</h1>
     <p class="tagline">Small boards. Real chess skills.</p>
     ${worlds.map((world) => `
       <h2>${world}</h2>
-      ${LEVELS.filter((l) => l.world === world).map((l) => `
-        <button class="level-card" data-id="${l.id}">
-          <span>${l.title}</span>
-          <span class="done">${solved.has(l.id) ? '✓' : ''}</span>
-        </button>`).join('')}`).join('')}`;
+      ${CHAPTERS.filter((c) => c.world === world).map((c) => {
+        const done = solvedIn(c).size;
+        const total = c.levels.length;
+        return `
+        <button class="level-card" data-id="${c.id}">
+          <span class="card-title">${c.title}</span>
+          <span class="card-count ${done === total ? 'done' : ''}">${done} / ${total}</span>
+          <span class="progress"><span style="width: ${total ? (100 * done) / total : 0}%"></span></span>
+        </button>`;
+      }).join('')}`).join('')}`;
   app.querySelectorAll<HTMLButtonElement>('.level-card').forEach((btn) => {
-    btn.addEventListener('click', () => startLevel(LEVELS.find((l) => l.id === btn.dataset.id)!));
+    btn.addEventListener('click', () => {
+      openChapter = CHAPTERS.find((c) => c.id === btn.dataset.id)!;
+      render();
+    });
   });
 }
 
 function render() {
   if (game) renderLevel(game);
+  else if (openChapter) renderChapter(openChapter);
   else renderHome();
 }
 

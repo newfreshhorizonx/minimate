@@ -17,13 +17,21 @@ worlds that each train one skill you use in real games.
 | Endgame technique | playing it out against perfect defence | K+R vs K, opposition, square of the pawn |
 | Transfer | the same idea on a full 8x8 board | patterns hidden in real-looking positions |
 
-11 levels so far:
+360 levels in 8 chapters so far, each going from easy to hard:
 
-- **Piece vision:** Knight's path, Two guards
-- **Mating patterns:** Back rank, Smothered mate, Anastasia's mate, Arabian mate, The ladder
-- **Endgame technique:** The quiet king, Stalemate trap, Losing a tempo, King in front (pawn promotion)
+| World | Chapter | Levels |
+|---|---|---|
+| Piece vision | Knight paths | 50 |
+| Piece vision | King walks | 30 |
+| Mating patterns | Back rank | 40 |
+| Mating patterns | Knight mates (smothered, Anastasia, Arabian) | 50 |
+| Mating patterns | Rooks & queens (ladder, box) | 40 |
+| Endgame technique | Queen mates (incl. stalemate traps) | 50 |
+| Endgame technique | Rook mates (quiet king moves, waiting moves) | 50 |
+| Endgame technique | Pawn endgames (king in front, opposition) | 50 |
 
 Move pieces by tapping (piece, then square) or by dragging them.
+Levels unlock as you go, up to three ahead of your furthest solved one.
 
 ## How it works
 
@@ -31,8 +39,12 @@ Move pieces by tapping (piece, then square) or by dragging them.
 - `src/engine/solver.ts` – exact solvers. Small boards can be searched completely, so:
   - the opponent always plays the **best defence** (delays mate or promotion the longest),
   - every level is **proven** to have exactly one solution (`tests/levels.test.ts`).
-- `src/levels.ts` – level definitions. Adding a level = adding an object here;
-  the tests fail if it is broken or has a second solution.
+- `scripts/generate-levels.ts` – the level generator. For each chapter it places
+  pieces at random (following the chapter's theme), keeps positions the solver
+  proves have exactly one winning first move, rates their difficulty (moves
+  needed, quiet or sacrificing key move, stalemate traps, tempting checks,
+  board size) and picks levels spread from easy to hard. Output: `src/levels.json`.
+- `src/levels.ts` – chapter titles and intros.
 - `src/main.ts` – the UI (plain TypeScript, no framework).
 
 It is a PWA: on an iPhone open the site in Safari → Share → *Add to Home Screen*.
@@ -46,12 +58,15 @@ npm install
 npm run dev     # http://localhost:5173
 npm test        # engine + level checks
 npm run build   # production build in dist/
+npm run generate                 # regenerate all levels (~12 min)
+npm run generate -- rook-mates   # regenerate one chapter only
 ```
 
 ## Roadmap
 
 - [x] Mini-board engine, solver, 3 example levels
-- [ ] 10+ levels per world, level select with progress
+- [x] Chapters with 30–50 generated levels each, level select with progress
+- [ ] More chapters: tactics (forks, pins, skewers), defence, opposition duels
 - [ ] Spaced repetition: failed motifs come back later
 - [x] Deploy to GitHub Pages – play at https://newfreshhorizonx.github.io/minimate/
 - [ ] App Store build via Capacitor

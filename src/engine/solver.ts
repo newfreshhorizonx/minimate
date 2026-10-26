@@ -11,6 +11,7 @@ export type Target = 'mate' | 'promote';
 // Results per (position, moves left, target). Positions repeat a lot in
 // the search tree, so this makes deeper levels fast enough for a phone.
 const cache = new Map<string, boolean>();
+export const clearCache = () => cache.clear();
 const key = (pos: Position, n: number, target: Target) =>
   `${target}${n}${pos.turn}` + pos.squares.map((p) => (p ? p.color + p.type : '.')).join('');
 
