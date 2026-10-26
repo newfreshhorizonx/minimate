@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPosition, parseSquare, status } from '../src/engine/board';
-import { forcesMate, mateSolutions, shortestPath } from '../src/engine/solver';
+import { forces, shortestPath, solutions } from '../src/engine/solver';
 import { LEVELS } from '../src/levels';
 
 describe.each(LEVELS)('level $id', (level) => {
@@ -16,12 +16,16 @@ describe.each(LEVELS)('level $id', (level) => {
       expect(shortestPath(pos, parseSquare(pos, goal.from), parseSquare(pos, goal.target))).toBe(goal.moves);
     });
   } else {
-    const goal = level.goal;
-    it(`has exactly one first move that mates in ${goal.moves}`, () => {
-      expect(mateSolutions(pos, goal.moves)).toHaveLength(1);
+    const { kind, moves } = level.goal;
+    it(`has exactly one first move that wins (${kind}) in ${moves}`, () => {
+      expect(solutions(pos, moves, kind)).toHaveLength(1);
     });
-    it('has no faster mate', () => {
-      expect(forcesMate(pos, goal.moves - 1)).toBe(false);
+    it('has no faster win', () => {
+      expect(forces(pos, moves - 1, kind)).toBe(false);
     });
   }
+});
+
+it('level ids are unique', () => {
+  expect(new Set(LEVELS.map((l) => l.id)).size).toBe(LEVELS.length);
 });

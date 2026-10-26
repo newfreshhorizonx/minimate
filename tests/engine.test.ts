@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPosition, legalMoves, makeMove, moveName, parseSquare, status } from '../src/engine/board';
-import { bestDefence, mateDistance } from '../src/engine/solver';
+import { bestDefence, distance, forces } from '../src/engine/solver';
 
 describe('board', () => {
   it('names and parses squares on small boards', () => {
@@ -16,10 +16,10 @@ describe('board', () => {
     expect(legalMoves(pos).map((m) => moveName(pos, m))).toEqual(['Ka1-a2']);
   });
 
-  it('promotes pawns on the last rank of a small board', () => {
+  it('promotes pawns to a queen on the last rank of a small board', () => {
     const pos = createPosition(4, 4, { a3: 'P' });
-    const promotions = legalMoves(pos).map((m) => m.promotion);
-    expect(promotions).toEqual(['Q', 'R', 'B', 'N']);
+    const next = makeMove(pos, legalMoves(pos)[0]);
+    expect(next.squares[parseSquare(pos, 'a4')]).toEqual({ type: 'Q', color: 'w' });
   });
 
   it('detects checkmate and stalemate', () => {
@@ -33,7 +33,15 @@ describe('board', () => {
 describe('solver', () => {
   it('finds the mate distance', () => {
     const pos = createPosition(5, 5, { c1: 'K', a1: 'R', e5: 'k', d4: 'p', e4: 'p' });
-    expect(mateDistance(pos, 3)).toBe(1);
+    expect(distance(pos, 3)).toBe(1);
+  });
+
+  it('does not count a promotion the defender can capture', () => {
+    // b4-b5=Q is taken at once by the king on a5, unless the white king guards b5.
+    const loose = createPosition(5, 5, { e1: 'K', b4: 'P', a5: 'k' });
+    expect(forces(loose, 1, 'promote')).toBe(false);
+    const defended = createPosition(5, 5, { c4: 'K', b4: 'P', a5: 'k' });
+    expect(forces(defended, 1, 'promote')).toBe(true);
   });
 
   it('defends by delaying mate as long as possible', () => {

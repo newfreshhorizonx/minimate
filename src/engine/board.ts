@@ -1,6 +1,7 @@
 // Chess rules for boards of any size from 3x3 to 8x8.
 // Squares are numbered 0..width*height-1, row by row starting at a1.
-// Simplifications vs. full chess: no castling, no en passant.
+// Simplifications vs. full chess: no castling, no en passant, pawns always
+// promote to a queen.
 
 export type Color = 'w' | 'b';
 export type PieceType = 'K' | 'Q' | 'R' | 'B' | 'N' | 'P';
@@ -27,7 +28,6 @@ const KNIGHT_STEPS = [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2,
 const ROOK_DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const BISHOP_DIRS = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 const ALL_DIRS = [...ROOK_DIRS, ...BISHOP_DIRS];
-const PROMOTIONS: PieceType[] = ['Q', 'R', 'B', 'N'];
 
 export const opponent = (c: Color): Color => (c === 'w' ? 'b' : 'w');
 
@@ -130,11 +130,7 @@ function pseudoMoves(pos: Position): Move[] {
     const y = Math.floor(from / width);
     const lastRank = turn === 'w' ? height - 1 : 0;
     const push = (to: number) => {
-      if (Math.floor(to / width) === lastRank) {
-        for (const promotion of PROMOTIONS) moves.push({ from, to, promotion });
-      } else {
-        moves.push({ from, to });
-      }
+      moves.push(Math.floor(to / width) === lastRank ? { from, to, promotion: 'Q' } : { from, to });
     };
 
     const one = from + dir * width;

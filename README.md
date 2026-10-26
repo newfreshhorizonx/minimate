@@ -17,13 +17,19 @@ worlds that each train one skill you use in real games.
 | Endgame technique | playing it out against perfect defence | K+R vs K, opposition, square of the pawn |
 | Transfer | the same idea on a full 8x8 board | patterns hidden in real-looking positions |
 
-Three example levels exist so far, one each for piece vision, mating patterns and endgame technique.
+11 levels so far:
+
+- **Piece vision:** Knight's path, Two guards
+- **Mating patterns:** Back rank, Smothered mate, Anastasia's mate, Arabian mate, The ladder
+- **Endgame technique:** The quiet king, Stalemate trap, Losing a tempo, King in front (pawn promotion)
+
+Move pieces by tapping (piece, then square) or by dragging them.
 
 ## How it works
 
-- `src/engine/board.ts` – chess rules for any board size (no castling / en passant).
+- `src/engine/board.ts` – chess rules for any board size (no castling / en passant, pawns promote to a queen).
 - `src/engine/solver.ts` – exact solvers. Small boards can be searched completely, so:
-  - the opponent always plays the **best defence** (delays mate the longest),
+  - the opponent always plays the **best defence** (delays mate or promotion the longest),
   - every level is **proven** to have exactly one solution (`tests/levels.test.ts`).
 - `src/levels.ts` – level definitions. Adding a level = adding an object here;
   the tests fail if it is broken or has a second solution.
