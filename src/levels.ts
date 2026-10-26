@@ -21,7 +21,12 @@ export interface PromoteGoal {
   moves: number; // get a queen that can't be taken, in N moves against perfect defence
 }
 
-export type Goal = PathGoal | MateGoal | PromoteGoal;
+export interface WinGoal {
+  kind: 'win';
+  moves: number; // be WIN_MARGIN points of material up after black's reply, within N moves
+}
+
+export type Goal = PathGoal | MateGoal | PromoteGoal | WinGoal;
 
 export interface Level {
   width: number;
@@ -53,6 +58,24 @@ export const CHAPTER_INFO: ChapterInfo[] = [
     world: 'Piece vision',
     title: 'King walks',
     intro: 'Walk the king to the gold square without ever stepping into check.',
+  },
+  {
+    id: 'forks',
+    world: 'Tactics',
+    title: 'Forks',
+    intro: 'One piece attacks two at once – black can only save one. Win material.',
+  },
+  {
+    id: 'pins',
+    world: 'Tactics',
+    title: 'Pins',
+    intro: 'A pinned piece can’t move without exposing something more valuable behind it. Win material.',
+  },
+  {
+    id: 'skewers',
+    world: 'Tactics',
+    title: 'Skewers',
+    intro: 'Attack a valuable piece; when it steps aside, take what was hiding behind it. Win material.',
   },
   {
     id: 'back-rank',
@@ -102,5 +125,6 @@ export function goalText(goal: Goal): string {
     case 'path': return `Reach the gold square in ${goal.moves} move${s}.`;
     case 'mate': return `Mate in ${goal.moves}.`;
     case 'promote': return `Promote safely in ${goal.moves} move${s}.`;
+    case 'win': return `Win material in ${goal.moves} move${s}.`;
   }
 }

@@ -13,7 +13,7 @@ import {
   makeMove, squareName, status,
 } from '../src/engine/board';
 import {
-  type Target, bestDefence, clearCache, distance, pathMoves, solutions,
+  type Target, WIN_MARGIN, bestDefence, clearCache, distance, forces, material, pathMoves, solutions,
 } from '../src/engine/solver';
 import type { Level } from '../src/levels';
 
@@ -93,16 +93,18 @@ const MAX_SOLVE_MS = 350; // a level whose solution line is slower than this fee
 
 /** Plays the solution with best defence, like the app does. */
 function mainLine(pos: Position, n: number, target: Target): Position[] {
+  const base = material(pos);
   const line = [pos];
   let p = pos;
   for (let k = n; k >= 1; k--) {
-    const move = solutions(p, k, target)[0];
+    const move = solutions(p, k, target, base)[0];
     if (!move) break;
     p = makeMove(p, move);
     line.push(p);
-    if (k === 1 || status(p) !== 'ongoing') break;
-    p = makeMove(p, bestDefence(p, k - 1, target)!);
+    if (status(p) !== 'ongoing') break;
+    p = makeMove(p, bestDefence(p, k - 1, target, base)!);
     line.push(p);
+    if (target === 'win' && material(p) - base >= WIN_MARGIN) break;
   }
   return line;
 }
@@ -134,6 +136,7 @@ function difficulty(pos: Position, n: number, key: Move): number {
 function solveCandidate(
   width: number, height: number, pieces: Record<string, string> | null,
   target: Target, maxN: number, theme?: (final: Position) => boolean,
+  keyTheme?: (pos: Position, key: Move) => boolean, minN = 1,
 ): Candidate | null {
   if (!pieces) return null;
   const pos = createPosition(width, height, pieces);
@@ -142,9 +145,12 @@ function solveCandidate(
   clearCache();
   const start = performance.now();
   const n = distance(pos, maxN, target);
-  if (n === null) return null;
+  if (n === null || n < minN) return null;
   const sols = solutions(pos, n, target);
   if (sols.length !== 1) return null;
+  if (keyTheme && !keyTheme(pos, sols[0])) return null;
+  // Material levels must be won by the tactic, not by mating.
+  if (target === 'win' && forces(pos, n, 'mate')) return null;
   clearCache();
   const line = mainLine(pos, n, target);
   if (performance.now() - start > MAX_SOLVE_MS) return null;
@@ -229,6 +235,103 @@ const knightTheme = (pos: Position) => {
     && attackedFrom(pos, sq).some((t) => t === king || around.has(t)));
 };
 
+// --- Tactic checks on the first (key) move ------------------------------------
+
+const VALUE: Record<string, number> = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 100 };
+const LINES: Record<string, number[][]> = {
+  R: [[1, 0], [-1, 0], [0, 1], [0, -1]],
+  B: [[1, 1], [1, -1], [-1, 1], [-1, -1]],
+  Q: [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]],
+};
+
+/** The moved piece attacks two black pieces worth more than a pawn (or the king). */
+const forkTheme = (pos: Position, key: Move) => {
+  const after = makeMove(pos, key);
+  const targets = attackedFrom(after, key.to).filter((sq) => {
+    const p = after.squares[sq];
+    return p?.color === 'b' && VALUE[p.type] >= 3;
+  });
+  return targets.length >= 2;
+};
+
+/** For each line of the moved slider: [first black piece hit, black piece right behind it]. */
+function xRays(pos: Position, from: number): [number, number][] {
+  const piece = pos.squares[from]!;
+  const [fx, fy] = xy(pos, from);
+  const pairs: [number, number][] = [];
+  for (const [dx, dy] of LINES[piece.type] ?? []) {
+    const hits: number[] = [];
+    for (let x = fx + dx, y = fy + dy; x >= 0 && x < pos.width && y >= 0 && y < pos.height && hits.length < 2; x += dx, y += dy) {
+      if (pos.squares[y * pos.width + x]) hits.push(y * pos.width + x);
+    }
+    if (hits.length === 2 && hits.every((sq) => pos.squares[sq]!.color === 'b')) pairs.push([hits[0], hits[1]]);
+  }
+  return pairs;
+}
+
+const value = (pos: Position, sq: number) => VALUE[pos.squares[sq]!.type];
+
+/**
+ * A black piece is pinned against something worth more (often the king) and
+ * can't simply capture the pinning piece. The key move sets up the line; it
+ * isn't a capture (otherwise it's usually just a trade).
+ */
+const pinTheme = (pos: Position, key: Move) => {
+  if (pos.squares[key.to]) return false;
+  const after = makeMove(pos, key);
+  return xRays(after, key.to).some(([front, behind]) =>
+    value(after, behind) > value(after, front) && !attackedFrom(after, front).includes(key.to));
+};
+
+/** A valuable piece is attacked and must move, exposing a piece behind it. */
+const skewerTheme = (pos: Position, key: Move) => {
+  if (pos.squares[key.to]) return false;
+  const after = makeMove(pos, key);
+  return xRays(after, key.to).some(([front, behind]) =>
+    value(after, front) > value(after, behind) && value(after, behind) >= 3);
+};
+
+/**
+ * Two black pieces on one line (`front`, then `behind` 1–2 squares further),
+ * with room in front for a white slider to come in. Raises the hit rate for
+ * pins and skewers a lot compared to fully random positions.
+ */
+function lineUp(w: number, h: number, front: string, behind: string): Spec[] {
+  const [dx, dy] = pick(LINES.Q);
+  const gap = 1 + rand(2);
+  for (let tries = 0; tries < 30; tries++) {
+    const fx = rand(w);
+    const fy = rand(h);
+    const bx = fx + dx * gap;
+    const by = fy + dy * gap;
+    const roomX = fx - dx;
+    const roomY = fy - dy;
+    const inside = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < h;
+    if (!inside(bx, by) || !inside(roomX, roomY)) continue;
+    return [
+      { letter: front, zone: (x, y) => x === fx && y === fy },
+      { letter: behind, zone: (x, y) => x === bx && y === by },
+    ];
+  }
+  return [];
+}
+
+/** White K + attackers, black K + pieces to win; the key move must show the tactic. */
+function tacticCandidate(
+  attackers: string[][], victims: string[], keyTheme: (pos: Position, key: Move) => boolean,
+  line?: (w: number, h: number) => Spec[],
+) {
+  const [w, h] = size([[5, 5], [5, 5], [6, 6], [6, 6]]);
+  const lined = line?.(w, h) ?? [];
+  const specs: Spec[] = [...lined];
+  if (!lined.some((s) => s.letter === 'k')) specs.push({ letter: 'k' });
+  specs.push({ letter: 'K' });
+  for (const letter of pick(attackers)) specs.push({ letter });
+  const count = (lined.length > 0 ? 0 : 1) + rand(3);
+  for (let i = 0; i < count; i++) specs.push({ letter: pick(victims) });
+  return solveCandidate(w, h, place(w, h, specs), 'win', 3, undefined, keyTheme, 2);
+}
+
 // --- Chapters -------------------------------------------------------------
 
 interface ChapterPlan {
@@ -260,6 +363,26 @@ const PLANS: ChapterPlan[] = [
       const count = 2 + rand(3);
       return pathCandidate(w, h, 'K', Array.from({ length: count }, () => pick(['b', 'r', 'n', 'n', 'p', 'q'])), 1);
     },
+  },
+  {
+    id: 'forks',
+    quotas: { 2: 34, 3: 16 },
+    seconds: 150,
+    make: () => tacticCandidate([['N'], ['N'], ['Q'], ['P', 'N'], ['B'], ['R'], ['N', 'P']], ['r', 'r', 'q', 'b', 'n', 'p'], forkTheme),
+  },
+  {
+    id: 'pins',
+    quotas: { 2: 28, 3: 12 },
+    seconds: 360,
+    make: () => tacticCandidate([['B'], ['R'], ['Q'], ['B', 'P'], ['R', 'N']], ['r', 'q', 'n', 'b', 'n', 'p'], pinTheme,
+      (w, h) => (chance(0.5) ? [] : lineUp(w, h, pick(['n', 'b', 'r', 'n']), pick(['k', 'k', 'q'])))),
+  },
+  {
+    id: 'skewers',
+    quotas: { 2: 28, 3: 12 },
+    seconds: 150,
+    make: () => tacticCandidate([['B'], ['R'], ['Q'], ['R', 'P'], ['B', 'N']], ['r', 'r', 'q', 'b', 'n'], skewerTheme,
+      (w, h) => (chance(0.5) ? [] : lineUp(w, h, pick(['k', 'k', 'q']), pick(['r', 'r', 'b', 'n'])))),
   },
   {
     id: 'back-rank',
@@ -398,12 +521,16 @@ try {
 }
 
 const result: Record<string, Level[]> = {};
-PLANS.forEach((plan, i) => {
+// Per-chapter seed from the chapter id: regenerating or adding one chapter
+// doesn't change the others.
+const seedOf = (id: string) => [...id].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619), 2166136261);
+
+PLANS.forEach((plan) => {
   if (only.length > 0 && !only.includes(plan.id)) {
     result[plan.id] = existing[plan.id] ?? [];
     return;
   }
-  random = mulberry32(1000 + i); // per-chapter seed: regenerating one chapter doesn't change the others
+  random = mulberry32(seedOf(plan.id));
   result[plan.id] = generate(plan);
 });
 

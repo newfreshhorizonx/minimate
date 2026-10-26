@@ -3,7 +3,7 @@ import {
   type Move, type Position, createPosition, legalMoves, makeMove, moveName, parseSquare,
   squareName, status,
 } from './engine/board';
-import { bestDefence, clearCache, moveWins, pathMoves } from './engine/solver';
+import { WIN_MARGIN, bestDefence, clearCache, material, moveWins, pathMoves } from './engine/solver';
 import { CHAPTERS, type Chapter, type Level, goalText } from './levels';
 
 // Same glyph for both colours (styled via CSS); ︎ stops iOS drawing emoji.
@@ -20,6 +20,7 @@ interface Game {
   index: number;
   level: Level;
   pos: Position;
+  base: number; // material balance at the start; "win material" levels measure against it
   pathSquare: number; // path levels: where the moving piece is now
   movesUsed: number;
   selected: number | null;
@@ -83,6 +84,7 @@ function startLevel(chapter: Chapter, index: number) {
     index,
     level,
     pos,
+    base: material(pos),
     pathSquare,
     movesUsed: 0,
     selected: level.goal.kind === 'path' ? pathSquare : null, // only one piece can move
@@ -136,13 +138,19 @@ function playPath(g: Game, move: Move) {
   }
 }
 
-/** Mate and promotion levels: black answers every move with its best defence. */
+const FAIL_TEXT = {
+  mate: 'lets black escape',
+  promote: 'lets black stop the pawn',
+  win: 'doesn’t win material – black holds',
+};
+
+/** Mate, promotion and material levels: black answers every move with its best defence. */
 function playAgainstDefence(g: Game, move: Move) {
   const goal = g.level.goal;
   if (goal.kind === 'path') return;
   const remaining = goal.moves - g.movesUsed;
   const name = moveName(g.pos, move);
-  const wins = moveWins(g.pos, move, remaining, goal.kind);
+  const wins = moveWins(g.pos, move, remaining, goal.kind, g.base);
   const next = makeMove(g.pos, move);
   g.pos = next;
   g.lastMove = move;
@@ -152,21 +160,23 @@ function playAgainstDefence(g: Game, move: Move) {
   if (result === 'checkmate') return finish(g, true, `${name} – checkmate!`);
   if (result === 'stalemate') return finish(g, false, `${name} is stalemate – a draw. Leave the king a square!`);
   if (goal.kind === 'promote' && move.promotion && wins) return finish(g, true, `${name} – a new queen, and it’s safe!`);
-  if (!wins) {
-    const what = goal.kind === 'mate' ? 'escape' : 'stop the pawn';
-    return finish(g, false, `${name} lets black ${what}. Try again.`);
-  }
+  if (!wins) return finish(g, false, `${name} ${FAIL_TEXT[goal.kind]}. Try again.`);
 
   g.busy = true;
   g.message = `${name} – black is thinking…`;
   setTimeout(() => {
-    const reply = bestDefence(next, remaining - 1, goal.kind)!;
+    const reply = bestDefence(next, remaining - 1, goal.kind, g.base)!;
     const replyName = moveName(next, reply);
     g.pos = makeMove(next, reply);
     g.lastMove = reply;
     g.busy = false;
+    const gained = material(g.pos) - g.base;
     const left = goal.moves - g.movesUsed;
-    g.message = `Black played ${replyName}. ${left} move${left === 1 ? '' : 's'} left.`;
+    if (goal.kind === 'win' && gained >= WIN_MARGIN) {
+      finish(g, true, `Black played ${replyName}. You won material: +${gained}!`);
+    } else {
+      g.message = `Black played ${replyName}. ${left} move${left === 1 ? '' : 's'} left.`;
+    }
     if (game === g) render();
   }, 450);
 }

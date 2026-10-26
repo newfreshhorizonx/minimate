@@ -17,12 +17,15 @@ worlds that each train one skill you use in real games.
 | Endgame technique | playing it out against perfect defence | K+R vs K, opposition, square of the pawn |
 | Transfer | the same idea on a full 8x8 board | patterns hidden in real-looking positions |
 
-360 levels in 8 chapters so far, each going from easy to hard:
+About 485 levels in 11 chapters so far, each going from easy to hard:
 
 | World | Chapter | Levels |
 |---|---|---|
 | Piece vision | Knight paths | 50 |
 | Piece vision | King walks | 30 |
+| Tactics | Forks | 50 |
+| Tactics | Pins | ~40 |
+| Tactics | Skewers | ~37 |
 | Mating patterns | Back rank | 40 |
 | Mating patterns | Knight mates (smothered, Anastasia, Arabian) | 50 |
 | Mating patterns | Rooks & queens (ladder, box) | 40 |
@@ -66,7 +69,8 @@ npm run generate -- rook-mates   # regenerate one chapter only
 
 - [x] Mini-board engine, solver, 3 example levels
 - [x] Chapters with 30–50 generated levels each, level select with progress
-- [ ] More chapters: tactics (forks, pins, skewers), defence, opposition duels
+- [x] Tactics: forks, pins, skewers ("win material": at least +2 after black's best reply)
+- [ ] More chapters: discovered attacks, deflection, defence, opposition duels
 - [ ] Spaced repetition: failed motifs come back later
 - [x] Deploy to GitHub Pages – play at https://newfreshhorizonx.github.io/minimate/
 - [ ] App Store build via Capacitor

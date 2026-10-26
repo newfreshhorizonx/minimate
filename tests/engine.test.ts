@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPosition, legalMoves, makeMove, moveName, parseSquare, status } from '../src/engine/board';
-import { bestDefence, distance, forces } from '../src/engine/solver';
+import { bestDefence, distance, forces, moveWins } from '../src/engine/solver';
 
 describe('board', () => {
   it('names and parses squares on small boards', () => {
@@ -34,6 +34,17 @@ describe('solver', () => {
   it('finds the mate distance', () => {
     const pos = createPosition(5, 5, { c1: 'K', a1: 'R', e5: 'k', d4: 'p', e4: 'p' });
     expect(distance(pos, 3)).toBe(1);
+  });
+
+  it('wins material with a knight fork, counting the recapture', () => {
+    // Nc3+ forks king e4 and queen b5: the queen is lost for nothing.
+    const fork = createPosition(5, 5, { a3: 'K', a2: 'N', e4: 'k', b5: 'q' });
+    expect(forces(fork, 1, 'win')).toBe(false);
+    expect(forces(fork, 2, 'win')).toBe(true);
+    // Qxb4 grabs a pawn, but the knight takes the queen back.
+    const trade = createPosition(5, 5, { a1: 'K', a3: 'Q', b4: 'p', d5: 'n', e5: 'k' });
+    const grab = { from: parseSquare(trade, 'a3'), to: parseSquare(trade, 'b4') };
+    expect(moveWins(trade, grab, 1, 'win')).toBe(false);
   });
 
   it('does not count a promotion the defender can capture', () => {
