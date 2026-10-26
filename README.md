@@ -47,5 +47,5 @@ npm run build   # production build in dist/
 - [x] Mini-board engine, solver, 3 example levels
 - [ ] 10+ levels per world, level select with progress
 - [ ] Spaced repetition: failed motifs come back later
-- [ ] Deploy to GitHub Pages
+- [x] Deploy to GitHub Pages – play at https://newfreshhorizonx.github.io/minimate/
 - [ ] App Store build via Capacitor
